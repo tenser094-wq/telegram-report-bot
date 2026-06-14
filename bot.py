@@ -9,25 +9,22 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 # ==========================================
-# ☁️ ตั้งค่า MQTT (แก้ไขให้ตรงกับ EMQX Cloud)
+# ☁️ ตั้งค่า MQTT 
 # ==========================================
-MQTT_BROKER = "zef6190c.ala.asia-southeast1.emqxsl.com"  # 1. ใส่ Host/Broker ของมึง (เช่น xxxx.emqxsl.com)
-MQTT_PORT = 8883                  # 2. ใช้พอร์ต 8883 สำหรับการเชื่อมต่อแบบ SSL
+MQTT_BROKER = "zef6190c.ala.asia-southeast1.emqxsl.com" 
+MQTT_PORT = 8883                  
 MQTT_TOPIC = "esp32/control"
 
-MQTT_USERNAME = "TENSER065"   # 3. ใส่ Username จากหน้าเว็บ EMQX Cloud
-MQTT_PASSWORD = "TENSER065"   # 4. ใส่ Password จากหน้าเว็บ EMQX Cloud
+MQTT_USERNAME = "TENSER065"   
+MQTT_PASSWORD = "TENSER065"   
 
 # 1. ฟังก์ชันดักฟังคำสั่ง /report
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🤖 ได้รับคำสั่ง /report แล้ว! กำลังส่งสัญญาณปลุกตู้ควบคุม...")
     try:
         client = mqtt.Client()
-        
-        # ตั้งค่าความปลอดภัยสำหรับ EMQX Cloud
         client.tls_set() 
         client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-        
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.publish(MQTT_TOPIC, "WAKEUP")
         client.disconnect()
@@ -41,9 +38,9 @@ def run_telegram_bot():
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("report", report))
     print("🚀 บอทตัวที่ 2 พร้อมดักฟังคำสั่ง /report แล้ว...")
-    application.run_polling()
+    application.run_polling() # 👈 อันนี้จะรันใน Main Thread
 
-# 2. ฟังก์ชันจำลอง Web Server (แก้ปัญหา No open ports detected)
+# 2. ฟังก์ชันจำลอง Web Server 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -59,10 +56,10 @@ def run_web_server():
     httpd.serve_forever()
 
 if __name__ == "__main__":
-    # รัน Telegram Bot ใน Background Thread
-    bot_thread = threading.Thread(target=run_telegram_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
+    # 🟢 ย้าย Web Server มารันใน Background Thread
+    web_thread = threading.Thread(target=run_web_server)
+    web_thread.daemon = True
+    web_thread.start()
     
-    # รัน Web Server หลัก เพื่อให้ Render ตรวจเจอพอร์ต
-    run_web_server()
+    # 🟢 รัน Telegram Bot หลัก (Main Thread) แก้ปัญหา Error เธรด
+    run_telegram_bot()
