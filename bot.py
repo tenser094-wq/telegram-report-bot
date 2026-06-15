@@ -1,24 +1,23 @@
 import os
-import threading
+import logging
 import paho.mqtt.client as mqtt
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
-# ดึง Token จาก Environment Variables บน Render
+# เปิดระบบ Log เพื่อดู Error
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# ==========================================
-# ☁️ ตั้งค่า MQTT 
-# ==========================================
+# ตั้งค่า MQTT
 MQTT_BROKER = "zef6190c.ala.asia-southeast1.emqxsl.com" 
 MQTT_PORT = 8883                  
 MQTT_TOPIC = "esp32/control"
+MQTT_USERNAME = "YOUR_USERNAME"   
+MQTT_PASSWORD = "YOUR_PASSWORD"   
 
-MQTT_USERNAME = "TENSER065"   
-MQTT_PASSWORD = "TENSER065"   
-
-# 1. ฟังก์ชันดักฟังคำสั่ง /report
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🤖 ได้รับคำสั่ง /report แล้ว! กำลังส่งสัญญาณปลุกตู้ควบคุม...")
     try:
@@ -32,34 +31,33 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"❌ [MQTT] เกิดข้อผิดพลาด: {e}")
 
-def run_telegram_bot():
-    if not TOKEN:
-        print("⚠️ [ERROR] ยังไม่ได้ใส่ TELEGRAM_TOKEN")
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("report", report))
-    print("🚀 บอทตัวที่ 2 พร้อมดักฟังคำสั่ง /report แล้ว...")
-    application.run_polling() # 👈 อันนี้จะรันใน Main Thread
-
-# 2. ฟังก์ชันจำลอง Web Server 
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+# Web Server สำหรับให้ Render ไม่มองว่าเว็บตาย (Binding port $PORT)
+class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"Bot is running actively!")
+        self.wfile.write(b"Bot is alive and listening!")
 
-def run_web_server():
+def run_server():
     port = int(os.environ.get("PORT", 10000))
     server_address = ('', port)
-    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
-    print(f"🌐 Web server is binding to port {port}...")
+    httpd = HTTPServer(server_address, HealthCheckHandler)
+    print(f"🌐 Health check server running on port {port}...")
     httpd.serve_forever()
 
 if __name__ == "__main__":
-    # 🟢 ย้าย Web Server มารันใน Background Thread
-    web_thread = threading.Thread(target=run_web_server)
-    web_thread.daemon = True
-    web_thread.start()
+    if not TOKEN:
+        print("⚠️ ยังไม่ได้ใส่ TELEGRAM_TOKEN!")
+
+    # 1. รัน Web Server เช็คสถานะไว้ที่ Background Thread
+    t = threading.Thread(target=run_server)
+    t.daemon = True
+    t.start()
+
+    # 2. รัน Telegram Bot (ใช้ ApplicationBuilder ของเวอร์ชันปัจจุบัน)
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.add_handler(CommandHandler("report", report))
     
-    # 🟢 รัน Telegram Bot หลัก (Main Thread) แก้ปัญหา Error เธรด
-    run_telegram_bot()
+    print("🚀 บอทตัวที่ 2 กำลังเริ่มรัน Polling...")
+    application.run_polling(drop_pending_updates=True)
